@@ -1,0 +1,123 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 220 60% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 60% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 60% 20%;
+
+    --primary: 220 72% 28%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 30% 95%;
+    --secondary-foreground: 220 60% 20%;
+
+    --muted: 220 20% 94%;
+    --muted-foreground: 220 20% 46%;
+
+    --accent: 220 65% 38%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 20% 90%;
+    --input: 220 20% 90%;
+    --ring: 220 72% 28%;
+
+    --radius: 0.625rem;
+
+    /* Custom Flowentra tokens */
+    --surface-dark: 220 55% 14%;
+    --surface-dark-foreground: 220 20% 95%;
+    --highlight: 220 65% 45%;
+    --highlight-foreground: 0 0% 100%;
+    --gradient-start: 220 72% 28%;
+    --gradient-end: 220 65% 45%;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 40% 7%;
+    --foreground: 220 20% 95%;
+    --card: 220 35% 10%;
+    --card-foreground: 220 20% 95%;
+    --popover: 220 35% 10%;
+    --popover-foreground: 220 20% 95%;
+    --primary: 220 65% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 25% 14%;
+    --secondary-foreground: 220 20% 95%;
+    --muted: 220 25% 14%;
+    --muted-foreground: 220 15% 60%;
+    --accent: 220 65% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 20% 16%;
+    --input: 220 20% 16%;
+    --ring: 220 65% 50%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+
+  [dir="rtl"] {
+    font-family: 'DM Sans', 'Segoe UI', Tahoma, sans-serif;
+  }
+}
+
+@layer utilities {
+  .gradient-primary {
+    @apply bg-gradient-to-r from-primary to-highlight;
+  }
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-highlight bg-clip-text text-transparent;
+  }
+
+  .section-dark {
+    background-color: hsl(var(--surface-dark));
+    color: hsl(var(--surface-dark-foreground));
+  }
+}
