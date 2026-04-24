@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
@@ -12,6 +12,8 @@ import { motion } from "framer-motion";
 
 const CustomPage = () => {
   const { slug = "" } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
+  const previewMode = searchParams.get("preview") === "1";
   const { lang } = useLanguage();
   const [page, setPage] = useState<CmsPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,7 +27,8 @@ const CustomPage = () => {
       .getBySlug(slug)
       .then((data) => {
         if (cancelled) return;
-        if (!data || !data.is_published) {
+        // In preview mode, allow drafts to render
+        if (!data || (!data.is_published && !previewMode)) {
           setNotFound(true);
         } else {
           setPage(data);
@@ -34,7 +37,7 @@ const CustomPage = () => {
       .catch(() => !cancelled && setNotFound(true))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [slug, previewMode]);
 
   if (loading) {
     return (
@@ -81,6 +84,12 @@ const CustomPage = () => {
       <EditableSection sectionKey="nav" label="Nav">
         <Navbar />
       </EditableSection>
+
+      {previewMode && !page.is_published && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/40 text-amber-600 text-xs font-bold uppercase tracking-wider shadow-lg backdrop-blur">
+          Draft preview — not visible to public
+        </div>
+      )}
 
       <main className="pt-20">
         {visibleSections.length === 0 && (

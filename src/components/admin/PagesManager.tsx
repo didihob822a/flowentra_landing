@@ -10,7 +10,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Plus, Trash2, Edit3, ExternalLink, Eye, EyeOff, GripVertical,
-  ChevronLeft, Save, Globe, Loader2, X, Layers, Copy,
+  ChevronLeft, Save, Globe, Loader2, X, Layers, Copy, CopyPlus,
+  Search, ArrowUp, ArrowDown, CheckSquare, Square, FileText,
 } from "lucide-react";
 import { pagesApi, type CmsPage, type PageSectionRow } from "@/services/adminPagesApi";
 import { PAGE_SECTION_REGISTRY } from "@/components/landing/sectionRegistry";
@@ -36,6 +37,11 @@ const PagesManager = () => {
   const [creating, setCreating] = useState(false);
   const [editingSection, setEditingSection] = useState<PageSectionRow | null>(null);
   const [sectionLang, setSectionLang] = useState("en");
+  const [deletingPage, setDeletingPage] = useState<CmsPage | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "published" | "draft">("all");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -53,6 +59,48 @@ const PagesManager = () => {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Filter + select (must run before any early returns to keep hook order stable)
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return pages.filter((p) => {
+      if (statusFilter === "published" && !p.is_published) return false;
+      if (statusFilter === "draft" && p.is_published) return false;
+      if (!q) return true;
+      return (
+        p.slug.toLowerCase().includes(q) ||
+        (p.title_en || "").toLowerCase().includes(q) ||
+        (p.title_fr || "").toLowerCase().includes(q) ||
+        (p.title_de || "").toLowerCase().includes(q) ||
+        (p.title_ar || "").toLowerCase().includes(q)
+      );
+    });
+  }, [pages, search, statusFilter]);
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selected.has(p.id));
+  const toggleSelectAll = () => {
+    if (allFilteredSelected) setSelected(new Set());
+    else setSelected(new Set(filtered.map((p) => p.id)));
+  };
+  const toggleSelect = (id: number) => {
+    const n = new Set(selected);
+    n.has(id) ? n.delete(id) : n.add(id);
+    setSelected(n);
+  };
+
+  const bulkSetPublished = async (val: boolean) => {
+    if (!selected.size) return;
+    setBulkBusy(true);
+    const res = await pagesApi.bulkPublish(Array.from(selected), val);
+    setBulkBusy(false);
+    if (res.success) {
+      toast.success(`${val ? "Published" : "Unpublished"} ${selected.size} page${selected.size === 1 ? "" : "s"}`);
+      setSelected(new Set());
+      load();
+    } else {
+      toast.error(res.message || "Bulk update failed");
+    }
+  };
 
   // ----- Section editor sub-view -----
   if (editingSection && editing) {
@@ -124,6 +172,56 @@ const PagesManager = () => {
         </button>
       </div>
 
+      {/* Search + filters + bulk bar */}
+      {!loading && !loadError && pages.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by title or slug…"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div className="flex items-center bg-card rounded-lg p-0.5 gap-0.5 border border-border">
+            {(["all", "published", "draft"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(s)}
+                className={`px-2.5 py-1.5 rounded-md text-xs font-medium capitalize transition-all ${
+                  statusFilter === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          {selected.size > 0 && (
+            <div className="inline-flex items-center gap-2 px-2 py-1 rounded-lg bg-primary/10 border border-primary/30 text-xs">
+              <span className="font-semibold text-primary">{selected.size} selected</span>
+              <button
+                onClick={() => bulkSetPublished(true)}
+                disabled={bulkBusy}
+                className="px-2 py-1 rounded bg-green-500/10 text-green-600 hover:bg-green-500/20 font-semibold disabled:opacity-50"
+              >
+                Publish
+              </button>
+              <button
+                onClick={() => bulkSetPublished(false)}
+                disabled={bulkBusy}
+                className="px-2 py-1 rounded bg-muted text-foreground hover:bg-muted/70 font-semibold disabled:opacity-50"
+              >
+                Unpublish
+              </button>
+              <button onClick={() => setSelected(new Set())} className="p-1 rounded hover:bg-muted" title="Clear selection">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <SkeletonList rows={5} />
       ) : loadError ? (
@@ -147,11 +245,34 @@ const PagesManager = () => {
             </button>
           }
         />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="No pages match your filters"
+          description="Try clearing the search or switching the status filter."
+          action={
+            <button
+              onClick={() => { setSearch(""); setStatusFilter("all"); }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-muted text-foreground text-sm font-semibold hover:bg-muted/80"
+            >
+              Clear filters
+            </button>
+          }
+        />
       ) : (
         <div className="rounded-xl border border-border bg-card overflow-hidden">
           <table className="w-full">
             <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
               <tr>
+                <th className="w-10 px-3 py-3">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="text-muted-foreground hover:text-foreground"
+                    title={allFilteredSelected ? "Deselect all" : "Select all"}
+                  >
+                    {allFilteredSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                  </button>
+                </th>
                 <th className="text-left px-4 py-3 font-semibold">Title</th>
                 <th className="text-left px-4 py-3 font-semibold">Slug</th>
                 <th className="text-left px-4 py-3 font-semibold">Sections</th>
@@ -160,8 +281,16 @@ const PagesManager = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {pages.map((p) => (
-                <tr key={p.id} className="hover:bg-muted/30">
+              {filtered.map((p) => (
+                <tr key={p.id} className={`hover:bg-muted/30 ${selected.has(p.id) ? "bg-primary/5" : ""}`}>
+                  <td className="px-3 py-3">
+                    <button
+                      onClick={() => toggleSelect(p.id)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      {selected.has(p.id) ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
+                    </button>
+                  </td>
                   <td className="px-4 py-3 text-sm font-medium text-foreground">{p.title_en || <em className="text-muted-foreground">Untitled</em>}</td>
                   <td className="px-4 py-3 text-xs text-muted-foreground font-mono">/p/{p.slug}</td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">{p.sections?.length || 0}</td>
@@ -174,21 +303,35 @@ const PagesManager = () => {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-1">
-                      {p.is_published && (
-                        <a href={`/p/${p.slug}`} target="_blank" rel="noopener" className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Open page">
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      )}
+                      <a
+                        href={`/p/${p.slug}${p.is_published ? "" : "?preview=1"}`}
+                        target="_blank"
+                        rel="noopener"
+                        className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                        title={p.is_published ? "Open page" : "Preview draft"}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
                       <button onClick={() => setEditing(p)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Edit">
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={async () => {
-                          if (!confirm(`Delete "${p.title_en || p.slug}"? This removes all per-page content.`)) return;
-                          await pagesApi.remove(p.id);
-                          toast.success("Page deleted");
-                          load();
+                          const res = await pagesApi.duplicate(p.id);
+                          if (res.success) {
+                            toast.success(`Duplicated as /p/${res.data!.slug}`);
+                            load();
+                          } else {
+                            toast.error(res.message || "Duplicate failed");
+                          }
                         }}
+                        className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                        title="Duplicate"
+                      >
+                        <CopyPlus className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setDeletingPage(p)}
                         className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
                         title="Delete"
                       >
@@ -204,6 +347,129 @@ const PagesManager = () => {
       )}
 
       {creating && <CreatePageDialog onClose={() => setCreating(false)} onCreated={(p) => { setCreating(false); setEditing(p); load(); }} />}
+      {deletingPage && (
+        <DeletePageDialog
+          page={deletingPage}
+          onClose={() => setDeletingPage(null)}
+          onDeleted={() => { setDeletingPage(null); load(); }}
+        />
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// Delete confirmation dialog (double-confirm: must type the slug)
+// ============================================================================
+const DeletePageDialog = ({ page, onClose, onDeleted }: {
+  page: CmsPage;
+  onClose: () => void;
+  onDeleted: () => void;
+}) => {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const sectionsCount = page.sections?.length || 0;
+  const slugMatches = typed.trim() === page.slug;
+
+  const confirmDelete = async () => {
+    if (!slugMatches) return;
+    setBusy(true);
+    setErrorMsg(null);
+    try {
+      const res = await pagesApi.remove(page.id);
+      if (res.success) {
+        toast.success(`Deleted "${page.title_en || page.slug}"`);
+        onDeleted();
+      } else {
+        const msg = res.message || "The backend refused to delete this page.";
+        setErrorMsg(msg);
+        toast.error(msg, { duration: 6000 });
+      }
+    } catch (e: any) {
+      const msg = e?.message || "Network error while deleting the page.";
+      setErrorMsg(msg);
+      toast.error(msg, { duration: 6000 });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-md rounded-xl bg-card border border-border shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="font-bold text-foreground inline-flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-destructive" />
+            Delete page
+          </h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-muted" disabled={busy}><X className="w-4 h-4" /></button>
+        </div>
+
+        {step === 1 ? (
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-foreground">
+              You're about to delete <strong className="font-semibold">{page.title_en || page.slug}</strong>.
+            </p>
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-foreground space-y-1.5">
+              <div className="font-semibold text-destructive">This will permanently remove:</div>
+              <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
+                <li>The page <code className="px-1 py-0.5 rounded bg-muted text-foreground">/p/{page.slug}</code></li>
+                <li>{sectionsCount} section{sectionsCount === 1 ? "" : "s"} on this page</li>
+                <li>All translated content (EN, FR, DE, AR) for these sections</li>
+              </ul>
+              <div className="pt-1.5 text-[11px] text-destructive/80">This action cannot be undone.</div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-lg hover:bg-muted">Cancel</button>
+              <button
+                onClick={() => setStep(2)}
+                className="px-3 py-1.5 text-sm rounded-lg bg-destructive text-destructive-foreground font-semibold hover:bg-destructive/90"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-5 space-y-4">
+            <p className="text-sm text-foreground">
+              To confirm, type the slug <code className="px-1.5 py-0.5 rounded bg-muted font-mono text-xs">{page.slug}</code> below.
+            </p>
+            <input
+              autoFocus
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder={page.slug}
+              disabled={busy}
+              className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-destructive/40"
+            />
+            {errorMsg && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                <div className="font-semibold mb-0.5">Delete failed</div>
+                <div className="text-destructive/90 break-words">{errorMsg}</div>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button onClick={() => { setStep(1); setErrorMsg(null); }} disabled={busy} className="px-3 py-1.5 text-sm rounded-lg hover:bg-muted">
+                Back
+              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={onClose} disabled={busy} className="px-3 py-1.5 text-sm rounded-lg hover:bg-muted">Cancel</button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={!slugMatches || busy}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-destructive text-destructive-foreground font-semibold disabled:opacity-50 hover:bg-destructive/90"
+                >
+                  {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Delete permanently
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -360,11 +626,14 @@ const PageEditor = ({ page: initialPage, onClose, onEditSection }: PageEditorPro
           <ChevronLeft className="w-4 h-4" /> Back to all pages
         </button>
         <div className="flex items-center gap-2">
-          {page.is_published ? (
-            <a href={`/p/${page.slug}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
-              <ExternalLink className="w-3.5 h-3.5" /> /p/{page.slug}
-            </a>
-          ) : null}
+          <a
+            href={`/p/${page.slug}${page.is_published ? "" : "?preview=1"}`}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> {page.is_published ? `/p/${page.slug}` : `Preview /p/${page.slug}`}
+          </a>
           <button
             onClick={togglePublish}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
@@ -454,17 +723,32 @@ const PageEditor = ({ page: initialPage, onClose, onEditSection }: PageEditorPro
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={page.sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
-                {page.sections.map((s) => (
+                {page.sections.map((s, idx) => (
                   <SortableSectionRow
                     key={s.id}
                     section={s}
+                    index={idx}
+                    total={page.sections.length}
                     onEdit={() => onEditSection(s)}
                     onToggle={async () => { await pagesApi.toggleVisible(s.id, !s.is_visible); reload(); }}
+                    onMove={async (dir) => {
+                      const newIdx = idx + dir;
+                      if (newIdx < 0 || newIdx >= page.sections.length) return;
+                      const reordered = arrayMove(page.sections, idx, newIdx);
+                      setPage({ ...page, sections: reordered });
+                      const res = await pagesApi.reorder(page.id, reordered.map((x) => x.id));
+                      if (!res.success) { toast.error(res.message || "Reorder failed"); reload(); }
+                    }}
+                    onDuplicate={async () => {
+                      const res = await pagesApi.duplicateSection(s.id);
+                      if (res.success) { toast.success("Section duplicated"); reload(); }
+                      else toast.error(res.message || "Duplicate failed");
+                    }}
                     onDelete={async () => {
                       if (!confirm(`Remove this ${s.section_type} section? Per-page content for it will be deleted.`)) return;
-                      await pagesApi.removeSection(s.id);
-                      toast.success("Section removed");
-                      reload();
+                      const res = await pagesApi.removeSection(s.id);
+                      if (res.success) { toast.success("Section removed"); reload(); }
+                      else toast.error(res.message || "Remove failed");
                     }}
                   />
                 ))}
@@ -483,10 +767,14 @@ const PageEditor = ({ page: initialPage, onClose, onEditSection }: PageEditorPro
 };
 
 // ----- Sortable row -----
-const SortableSectionRow = ({ section, onEdit, onToggle, onDelete }: {
+const SortableSectionRow = ({ section, index, total, onEdit, onToggle, onMove, onDuplicate, onDelete }: {
   section: PageSectionRow;
+  index: number;
+  total: number;
   onEdit: () => void;
   onToggle: () => void;
+  onMove: (dir: -1 | 1) => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: section.id });
@@ -500,13 +788,34 @@ const SortableSectionRow = ({ section, onEdit, onToggle, onDelete }: {
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-background ${section.is_visible ? "" : "opacity-60"}`}
+      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border border-border bg-background ${section.is_visible ? "" : "opacity-60"}`}
     >
-      <button {...attributes} {...listeners} className="touch-none cursor-grab text-muted-foreground hover:text-foreground p-1">
+      <button {...attributes} {...listeners} className="touch-none cursor-grab text-muted-foreground hover:text-foreground p-1" title="Drag to reorder">
         <GripVertical className="w-4 h-4" />
       </button>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold text-foreground">{def?.label || section.section_type}</div>
+      <div className="flex flex-col -gap-1">
+        <button
+          onClick={() => onMove(-1)}
+          disabled={index === 0}
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Move up"
+        >
+          <ArrowUp className="w-3 h-3" />
+        </button>
+        <button
+          onClick={() => onMove(1)}
+          disabled={index === total - 1}
+          className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+          title="Move down"
+        >
+          <ArrowDown className="w-3 h-3" />
+        </button>
+      </div>
+      <div className="flex-1 min-w-0 ml-1">
+        <div className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <span className="text-[10px] font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{index + 1}</span>
+          {def?.label || section.section_type}
+        </div>
         <div className="text-[10px] text-muted-foreground font-mono truncate">{section.instance_key}</div>
       </div>
       <button onClick={onToggle} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title={section.is_visible ? "Hide" : "Show"}>
@@ -514,6 +823,9 @@ const SortableSectionRow = ({ section, onEdit, onToggle, onDelete }: {
       </button>
       <button onClick={onEdit} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Edit content">
         <Edit3 className="w-3.5 h-3.5" />
+      </button>
+      <button onClick={onDuplicate} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Duplicate section">
+        <CopyPlus className="w-3.5 h-3.5" />
       </button>
       <button onClick={onDelete} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Remove">
         <Trash2 className="w-3.5 h-3.5" />
@@ -523,28 +835,55 @@ const SortableSectionRow = ({ section, onEdit, onToggle, onDelete }: {
 };
 
 // ----- Add picker -----
-const AddSectionPicker = ({ onPick, onClose }: { onPick: (type: string) => void; onClose: () => void }) => (
-  <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-    <div className="w-full max-w-2xl rounded-xl bg-card border border-border shadow-2xl">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-        <h3 className="font-bold text-foreground">Add a section</h3>
-        <button onClick={onClose} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
-      </div>
-      <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto">
-        {PAGE_SECTION_REGISTRY.map((def) => (
-          <button
-            key={def.type}
-            onClick={() => onPick(def.type)}
-            className="text-left p-3 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors"
-          >
-            <div className="text-sm font-semibold text-foreground">{def.label}</div>
-            <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{def.type}</div>
-          </button>
-        ))}
+const AddSectionPicker = ({ onPick, onClose }: { onPick: (type: string) => void; onClose: () => void }) => {
+  const [q, setQ] = useState("");
+  const filtered = PAGE_SECTION_REGISTRY.filter((d) => {
+    const s = q.trim().toLowerCase();
+    if (!s) return true;
+    return d.label.toLowerCase().includes(s) || d.type.toLowerCase().includes(s);
+  });
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-2xl rounded-xl bg-card border border-border shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h3 className="font-bold text-foreground inline-flex items-center gap-2">
+            <Layers className="w-4 h-4" /> Add a section
+          </h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="px-5 pt-4">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search sections…"
+              className="w-full pl-9 pr-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+        </div>
+        <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="col-span-full text-center py-8 text-sm text-muted-foreground">No sections match "{q}"</div>
+          ) : filtered.map((def) => (
+            <button
+              key={def.type}
+              onClick={() => onPick(def.type)}
+              className="text-left p-3 rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors group"
+            >
+              <div className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary" />
+                {def.label}
+              </div>
+              <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{def.type}</div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ----- Linking helper -----
 const LinkingHelper = ({ page }: { page: CmsPage }) => {

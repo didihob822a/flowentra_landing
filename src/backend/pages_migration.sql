@@ -1,10 +1,16 @@
 -- =====================================================================
--- Page Builder migration — run this once on the production MySQL DB.
--- Creates two tables. Per-page section content reuses the existing
--- `flowentra_site_content` table (the section column stores the
--- per-page instance_key, e.g. "page_3_hero_1").
+-- Page Builder migration — run this ONCE on the production MySQL DB
+-- (e.g. via phpMyAdmin → SQL tab, on database `luccybcdb`).
+--
+-- Creates the two tables used by the Pages CMS. Per-page section
+-- content reuses the existing `flowentra_site_content` table — the
+-- `section` column there stores the per-page instance_key
+-- (e.g. "page_3_hero_1"), so no extra content table is needed.
 -- =====================================================================
 
+-- ---------------------------------------------------------------------
+-- 1) Pages table — one row per custom page (slug + translated meta).
+-- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `flowentra_pages` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `slug` VARCHAR(120) UNIQUE NOT NULL,
@@ -23,6 +29,11 @@ CREATE TABLE IF NOT EXISTS `flowentra_pages` (
   INDEX `idx_published` (`is_published`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ---------------------------------------------------------------------
+-- 2) Page sections — ordered list of section instances per page.
+--    `instance_key` is what gets stored as `section` in
+--    `flowentra_site_content` so each page has its own content scope.
+-- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `flowentra_page_sections` (
   `id` INT PRIMARY KEY AUTO_INCREMENT,
   `page_id` INT NOT NULL,
@@ -36,9 +47,19 @@ CREATE TABLE IF NOT EXISTS `flowentra_page_sections` (
   INDEX `idx_page_order` (`page_id`, `sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Register the new "Custom Links" field on the nav section so it appears
--- in the existing Section Editor. Each item: { "label": "Our Story", "href": "/p/our-story" }.
+-- ---------------------------------------------------------------------
+-- 3) Optional: register the "Custom Nav Links" field so admins can add
+--    links to custom pages from the Navigation section editor.
+--    Safe to skip if `flowentra_cms_fields` doesn't exist in your DB.
+-- ---------------------------------------------------------------------
 INSERT IGNORE INTO `flowentra_cms_fields`
   (`section_key`, `field_key`, `field_label`, `field_type`, `sort_order`, `is_required`)
 VALUES
   ('nav', 'customLinks', 'Custom Nav Links (JSON: [{"label":"…","href":"/p/…"}])', 'json', 99, 0);
+
+-- ---------------------------------------------------------------------
+-- Verify (optional):
+--   SHOW TABLES LIKE 'flowentra_page%';
+--   DESCRIBE flowentra_pages;
+--   DESCRIBE flowentra_page_sections;
+-- ---------------------------------------------------------------------
